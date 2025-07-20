@@ -1,21 +1,15 @@
 #![allow(dead_code)]
-use anchor_client::{Client, Cluster};
-use anchor_lang::prelude::AccountMeta;
-use anyhow::{format_err, Result};
-use arrayref::array_ref;
-use clap::Parser;
-use configparser::ini::Ini;
-use solana_account_decoder::{
+use anchor_client::solana_account_decoder::{
     parse_token::{TokenAccountType, UiAccountState},
     UiAccountData, UiAccountEncoding,
 };
-use solana_client::{
+use anchor_client::solana_client::{
     rpc_client::RpcClient,
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig, RpcTransactionConfig},
     rpc_filter::{Memcmp, RpcFilterType},
     rpc_request::TokenAccountsFilter,
 };
-use solana_sdk::{
+use anchor_client::solana_sdk::{
     commitment_config::CommitmentConfig,
     compute_budget::ComputeBudgetInstruction,
     message::Message,
@@ -24,6 +18,12 @@ use solana_sdk::{
     signature::{Keypair, Signature, Signer},
     transaction::Transaction,
 };
+use anchor_client::{Client, Cluster};
+use anchor_lang::prelude::AccountMeta;
+use anyhow::{format_err, Result};
+use arrayref::array_ref;
+use clap::Parser;
+use configparser::ini::Ini;
 use solana_transaction_status::UiTransactionEncoding;
 use std::path::Path;
 use std::rc::Rc;
@@ -176,11 +176,11 @@ fn load_cfg(client_config: &String) -> Result<ClientConfig> {
     })
 }
 fn read_keypair_file(s: &str) -> Result<Keypair> {
-    solana_sdk::signature::read_keypair_file(s)
+    anchor_client::solana_sdk::signature::read_keypair_file(s)
         .map_err(|_| format_err!("failed to read keypair from {}", s))
 }
 fn write_keypair_file(keypair: &Keypair, outfile: &str) -> Result<String> {
-    solana_sdk::signature::write_keypair_file(keypair, outfile)
+    anchor_client::solana_sdk::signature::write_keypair_file(keypair, outfile)
         .map_err(|_| format_err!("failed to write keypair to {}", outfile))
 }
 fn path_is_exist(path: &str) -> bool {
@@ -188,6 +188,68 @@ fn path_is_exist(path: &str) -> bool {
 }
 
 fn load_cur_and_next_five_tick_array(
+    rpc_client: &RpcClient,
+    pool_config: &ClientConfig,
+    pool_state: &PoolState,
+    tickarray_bitmap_extension: &TickArrayBitmapExtension,
+    zero_for_one: bool,
+) -> VecDeque<TickArrayState> {
+    let (_, mut current_valid_tick_array_start_index) = pool_state
+        .get_first_initialized_tick_array(&Some(*tickarray_bitmap_extension), zero_for_one)
+        .unwrap();
+    let mut tick_array_keys = Vec::new();
+    tick_array_keys.push(
+        Pubkey::find_program_address(
+            &[
+                raydium_amm_v3::states::TICK_ARRAY_SEED.as_bytes(),
+                pool_config.pool_id_account.unwrap().to_bytes().as_ref(),
+                &current_valid_tick_array_start_index.to_be_bytes(),
+            ],
+            &pool_config.raydium_v3_program,
+        )
+        .0,
+    );
+    let mut max_array_size = 5;
+    while max_array_size != 0 {
+        let next_tick_array_index = pool_state
+            .next_initialized_tick_array_start_index(
+                &Some(*tickarray_bitmap_extension),
+                current_valid_tick_array_start_index,
+                zero_for_one,
+            )
+            .unwrap();
+        if next_tick_array_index.is_none() {
+            break;
+        }
+        current_valid_tick_array_start_index = next_tick_array_index.unwrap();
+        tick_array_keys.push(
+            Pubkey::find_program_address(
+                &[
+                    raydium_amm_v3::states::TICK_ARRAY_SEED.as_bytes(),
+                    pool_config.pool_id_account.unwrap().to_bytes().as_ref(),
+                    &current_valid_tick_array_start_index.to_be_bytes(),
+                ],
+                &pool_config.raydium_v3_program,
+            )
+            .0,
+        );
+        max_array_size -= 1;
+    }
+    let tick_array_rsps = rpc_client.get_multiple_accounts(&tick_array_keys).unwrap();
+    let mut tick_arrays = VecDeque::new();
+    for (index, tick_array) in tick_array_rsps.iter().enumerate() {
+        let tick_array_state =
+            deserialize_anchor_account::<raydium_amm_v3::states::TickArrayState>(
+                &tick_array.clone().unwrap(),
+            )
+            .unwrap();
+        tick_arrays.push_back(tick_array_state);
+    }
+    tick_arrays
+}
+
+pub fn load_cur_and_next_five_tick_array_keys(
+    rpc_client: &RpcClient,
     pool_config: &ClientConfig,
     pool_state: &PoolState,
     tickarray_bitmap_extension: &TickArrayBitmapExtension,
@@ -239,7 +301,7 @@ fn load_cur_and_next_five_tick_array(
     for (index, tick_array) in tick_array_rsps.iter().enumerate() {
         let tick_array_state =
             deserialize_anchor_account::<raydium_amm_v3::states::TickArrayState>(
-                &tick_array.unwrap(),
+                &tick_array.clone().unwrap(),
             )
             .unwrap();
         tick_arrays.push_back(tick_array_state);
@@ -628,9 +690,6 @@ fn main() -> Result<()> {
                     "Frozen" => account_state = AccountState::Frozen,
                     _ => panic!("error default_account_state[Uninitialized, Initialized, Frozen]"),
                 }
-                extensions.push(ExtensionInitializationParams::DefaultAccountState {
-                    state: account_state,
-                })
             }
             if let Some(transfer_fee_value) = transfer_fee {
                 let transfer_fee_basis_points = transfer_fee_value[0] as u16;
@@ -1656,6 +1715,7 @@ fn main() -> Result<()> {
                 && user_output_state.base.mint == pool_state.token_mint_1;
             // load tick_arrays
             let mut tick_arrays = load_cur_and_next_five_tick_array(
+                &rpc_client,
                 &pool_config,
                 &pool_state,
                 &tickarray_bitmap_extension,
@@ -1834,6 +1894,7 @@ fn main() -> Result<()> {
             let amount_specified = amount.checked_sub(transfer_fee).unwrap();
             // load tick_arrays
             let mut tick_arrays = load_cur_and_next_five_tick_array(
+                &rpc_client,
                 &pool_config,
                 &pool_state,
                 &tickarray_bitmap_extension,

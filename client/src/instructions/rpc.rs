@@ -1,14 +1,14 @@
-use anyhow::{anyhow, Result};
-use solana_client::{
+use anchor_client::solana_client::{
     rpc_client::RpcClient,
     rpc_config::RpcSendTransactionConfig,
     rpc_request::RpcRequest,
     rpc_response::{RpcResult, RpcSimulateTransactionResult},
 };
-use solana_sdk::{
+use anchor_client::solana_sdk::{
     account::Account, commitment_config::CommitmentConfig, program_pack::Pack as TokenPack,
     pubkey::Pubkey, signature::Signature, transaction::Transaction,
 };
+use anyhow::{anyhow, Result};
 use std::convert::Into;
 
 pub fn simulate_transaction(

@@ -231,7 +231,7 @@ pub fn parse_program_instruction(
             match ui_message {
                 solana_transaction_status::UiMessage::Raw(ui_raw_msg) => ui_raw_msg,
                 _ => solana_transaction_status::UiRawMessage {
-                    header: solana_sdk::message::MessageHeader::default(),
+                    header: anchor_client::solana_sdk::message::MessageHeader::default(),
                     account_keys: Vec::new(),
                     recent_blockhash: "".to_string(),
                     instructions: Vec::new(),
@@ -240,7 +240,7 @@ pub fn parse_program_instruction(
             }
         }
         _ => solana_transaction_status::UiRawMessage {
-            header: solana_sdk::message::MessageHeader::default(),
+            header: anchor_client::solana_sdk::message::MessageHeader::default(),
             account_keys: Vec::new(),
             recent_blockhash: "".to_string(),
             instructions: Vec::new(),

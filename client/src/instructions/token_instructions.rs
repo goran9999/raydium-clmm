@@ -1,8 +1,6 @@
 use super::super::{read_keypair_file, ClientConfig};
-use anchor_client::{Client, Cluster};
-use anyhow::Result;
-use solana_client::rpc_client::RpcClient;
-use solana_sdk::{
+use anchor_client::solana_client::rpc_client::RpcClient;
+use anchor_client::solana_sdk::{
     account::WritableAccount,
     instruction::Instruction,
     program_pack::Pack,
@@ -10,6 +8,8 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     system_instruction,
 };
+use anchor_client::{Client, Cluster};
+use anyhow::Result;
 use spl_token_2022::{
     extension::{BaseStateWithExtensions, ExtensionType, StateWithExtensionsMut},
     state::{Account, Mint},
@@ -39,8 +39,7 @@ pub fn create_and_init_mint_instr(
         .iter()
         .map(|e| e.extension())
         .collect::<Vec<_>>();
-    let space = ExtensionType::try_calculate_account_len::<Mint>(&extension_types)?;
-
+    let space = 0;
     let mut instructions = vec![system_instruction::create_account(
         &program.payer(),
         mint_key,
