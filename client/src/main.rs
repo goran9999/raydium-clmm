@@ -188,12 +188,11 @@ fn path_is_exist(path: &str) -> bool {
 }
 
 fn load_cur_and_next_five_tick_array(
-    rpc_client: &RpcClient,
     pool_config: &ClientConfig,
     pool_state: &PoolState,
     tickarray_bitmap_extension: &TickArrayBitmapExtension,
     zero_for_one: bool,
-) -> VecDeque<TickArrayState> {
+) -> Vec<Pubkey> {
     let (_, mut current_valid_tick_array_start_index) = pool_state
         .get_first_initialized_tick_array(&Some(*tickarray_bitmap_extension), zero_for_one)
         .unwrap();
@@ -237,7 +236,7 @@ fn load_cur_and_next_five_tick_array(
     }
     let tick_array_rsps = rpc_client.get_multiple_accounts(&tick_array_keys).unwrap();
     let mut tick_arrays = VecDeque::new();
-    for tick_array in tick_array_rsps {
+    for (index, tick_array) in tick_array_rsps.iter().enumerate() {
         let tick_array_state =
             deserialize_anchor_account::<raydium_amm_v3::states::TickArrayState>(
                 &tick_array.unwrap(),
@@ -245,7 +244,7 @@ fn load_cur_and_next_five_tick_array(
             .unwrap();
         tick_arrays.push_back(tick_array_state);
     }
-    tick_arrays
+    tick_array_keys
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1657,7 +1656,6 @@ fn main() -> Result<()> {
                 && user_output_state.base.mint == pool_state.token_mint_1;
             // load tick_arrays
             let mut tick_arrays = load_cur_and_next_five_tick_array(
-                &rpc_client,
                 &pool_config,
                 &pool_state,
                 &tickarray_bitmap_extension,
@@ -1836,7 +1834,6 @@ fn main() -> Result<()> {
             let amount_specified = amount.checked_sub(transfer_fee).unwrap();
             // load tick_arrays
             let mut tick_arrays = load_cur_and_next_five_tick_array(
-                &rpc_client,
                 &pool_config,
                 &pool_state,
                 &tickarray_bitmap_extension,
