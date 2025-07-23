@@ -890,8 +890,8 @@ pub fn initialize_token_metadata_extension<'info>(
     let mint_data = position_nft_mint.try_borrow_data()?;
     let mint_state_unpacked =
         StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&mint_data)?;
-    let new_account_len =
-        mint_state_unpacked.try_get_new_account_len_for_variable_len_extension(&metadata)?;
+    let new_account_len = 0;
+    // mint_state_unpacked.try_get_new_account_len_for_variable_len_extension(&metadata)?;
     let new_rent_exempt_lamports = Rent::get()?.minimum_balance(new_account_len);
     let additional_lamports = new_rent_exempt_lamports.saturating_sub(position_nft_mint.lamports());
     // CPI call will borrow the account data
